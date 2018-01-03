@@ -2,6 +2,7 @@ var SteamCommunity = require('../index.js');
 var Helpers = require('../components/helpers.js');
 var SteamID = require('steamid');
 var xml2js = require('xml2js');
+var Cheerio = require('cheerio');
 
 SteamCommunity.prototype.getSteamUser = function(id, callback) {
 	if(typeof id !== 'string' && !Helpers.isSteamID(id)) {
@@ -46,6 +47,43 @@ SteamCommunity.prototype.getSteamUser = function(id, callback) {
 			
 			callback(null, new CSteamUser(self, result.profile, customurl));
 		});
+	}, "steamcommunity");
+};
+
+SteamCommunity.prototype.getUserFriends = function(id, callback) {
+	if(typeof id !== 'string' && !Helpers.isSteamID(id)) {
+		throw new Error("id parameter should be a user URL string or a SteamID object");
+	}
+
+	if(typeof id === 'object' && (id.universe != SteamID.Universe.PUBLIC || id.type != SteamID.Type.INDIVIDUAL)) {
+		throw new Error("SteamID must stand for an individual account in the public universe");
+	}
+
+	var url = "http://steamcommunity.com/" + (typeof id === 'string' ? "id/" + id : "profiles/" + id.toString()) + "/friends/";
+	this.httpRequestGet(url, function(err, response, body) {
+		if (err) {
+			callback(err);
+			return;
+		}
+
+		var data = {};
+		var $ = Cheerio.load(body);
+
+		$('div.profile_friends').each(function(idx, elem) {
+			$(elem).find('div.persona').each(function(i, el) {
+				var b = $(el);
+				//console.log(b.find('input').attr('data-steamid'))
+				var item = {
+					steamid: b.find('input').length,
+					href: b.find('a').attr('href'),
+					mini: b.attr('data-miniprofile'),
+					name: b.children().last().text(),
+				}
+				data[item.mini]  = item;
+			});
+		});
+
+		return callback(null, data);
 	}, "steamcommunity");
 };
 
