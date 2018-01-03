@@ -2,6 +2,7 @@ var SteamCommunity = require('../index.js');
 var Helpers = require('../components/helpers.js');
 var SteamID = require('steamid');
 var xml2js = require('xml2js');
+var Cheerio = require('cheerio');
 
 SteamCommunity.prototype.getSteamUser = function(id, callback) {
 	if(typeof id !== 'string' && !Helpers.isSteamID(id)) {
@@ -45,6 +46,37 @@ SteamCommunity.prototype.getSteamUser = function(id, callback) {
 			}
 			
 			callback(null, new CSteamUser(self, result.profile, customurl));
+		});
+	}, "steamcommunity");
+};
+
+SteamCommunity.prototype.getUserApps = function(id, callback) {
+	if(typeof id !== 'string' && !Helpers.isSteamID(id)) {
+		throw new Error("id parameter should be a user URL string or a SteamID object");
+	}
+
+	if(typeof id === 'object' && (id.universe != SteamID.Universe.PUBLIC || id.type != SteamID.Type.INDIVIDUAL)) {
+		throw new Error("SteamID must stand for an individual account in the public universe");
+	}
+
+	var url = "http://steamcommunity.com/" + (typeof id === 'string' ? "id/" + id : "profiles/" + id.toString()) + "/games/?tab=all";
+	this.httpRequestGet(url, function(err, response, body) {
+		if (err) {
+			callback(err);
+			return;
+		}
+
+		var $ = Cheerio.load(body);
+
+		$('script').each(function(i, elem) {
+			$(elem).text().trim().split(/\n+/).forEach(function(line) {
+				line = line.trim();
+				if (line.startsWith('var rgGames')) {
+					var tail = line.split('=')[1];
+					var games = JSON.parse(tail.replace(/;$/, ''));
+					return callback(null, games);
+				}
+			})
 		});
 	}, "steamcommunity");
 };
@@ -158,6 +190,10 @@ CSteamUser.prototype.getAliases = function(callback) {
 
 CSteamUser.prototype.getInventoryContexts = function(callback) {
 	this._community.getUserInventoryContexts(this.steamID, callback);
+};
+
+CSteamUser.prototype.getApps = function(callback) {
+	this._community.getUserApps(this.steamID, callback);
 };
 
 /**
